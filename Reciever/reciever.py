@@ -14,7 +14,8 @@ port_data_long = {}  # Формат: {port: {'buffer': deque(maxlen=300), 'names
 async def write_csv(port, buffer, filename):
     """Записывает весь буфер в CSV файл"""
     try:
-        with open(filename, mode='w', newline='') as file:
+        filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+        with open(filepath, mode='w', newline='') as file:
             writer = csv.writer(file)
 
             # Записываем заголовки (timeStamp + имена колонок)
@@ -24,10 +25,10 @@ async def write_csv(port, buffer, filename):
             # Записываем все данные из буфера
             for row in buffer:
                 writer.writerow(row)
-        print(f"Данные записаны в {filename} (строк: {len(buffer)})")
+        print(f"Данные записаны в {filepath} (строк: {len(buffer)})")
 
     except Exception as e:
-        print(f"Ошибка при записи в файл {filename}: {e}")
+        print(f"Ошибка при записи в файл {filepath}: {e}")
 
 
 async def update_csv(port, values, timestamp=None):

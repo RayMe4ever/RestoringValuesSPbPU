@@ -102,7 +102,7 @@ class knn_model:
         # Выполняем заполнение
         if batch.shape[0] < self.batch_size:
             print("Недостаточно данных! Сидим, не рыпаемся...")
-            return
+            return None, None
 
         batch_interpolation, inter, mean = self.compare_fill_methods_and_calculate_mape_knn(batch, batch_true)
         if inter is not None:

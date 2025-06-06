@@ -9,7 +9,7 @@ import random
 
 files = ["PowerConsumption1.csv", "energydata_complete.csv"]
 ports = [8092, 8093, 8094, 8095]
-chances = [0.0125, 0.025]
+chances = [0.30, 0.20] # 0.0125, 0.025
 intervals = [5000, 7000]
 time_format='%Y-%m-%d %H:%M:%S'
 
