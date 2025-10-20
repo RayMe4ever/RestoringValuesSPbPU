@@ -1,3 +1,4 @@
+import time
 import asyncio
 import websockets
 import json
@@ -55,7 +56,7 @@ async def update_csv(port, values, timestamp=None):
 
 async def receive_data(websocket_port):
     """Получить данные с websocket-порта"""
-    host = os.getenv("WEBSOCKET_HOST", socket.gethostbyname(socket.gethostname()))
+    host = "localhost" # os.getenv("WEBSOCKET_HOST", socket.gethostbyname(socket.gethostname()))
     uri = f"ws://{host}:{websocket_port}"
 
     while True:  # Бесконечный цикл для переподключения
@@ -120,6 +121,8 @@ if __name__ == "__main__":
     print(f"Ресивер-коллектор запущен с аргументами: {arg}")#{sys.argv}")
     ports = [int(p) for p in arg.split('-')]#sys.argv[1].split('-')]
 
+
+    time.sleep(4)
     try:
         asyncio.run(listen_ports(ports))
     except KeyboardInterrupt:
