@@ -82,7 +82,7 @@ async def run_servers(ports):
     for port in ports:
         server = await websockets.serve(
             handle_connection,
-            "0.0.0.0",
+            "localhost",
             port,
             ping_interval=20,
             ping_timeout=60

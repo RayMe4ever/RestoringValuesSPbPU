@@ -1,3 +1,4 @@
+import time
 import json
 import sys
 import numpy as np
@@ -58,7 +59,7 @@ class Facility:
 
     async def run_websocket_main(self):
         """Подключиться к главному порту"""
-        host = os.getenv("WEBSOCKET_HOST", socket.gethostbyname(socket.gethostname()))
+        host = "localhost" #os.getenv("WEBSOCKET_HOST", socket.gethostbyname(socket.gethostname()))
         url_main = f"ws://{host}:{self.port_main}"
         print(f"Подключаюсь к {url_main}")
         try:
@@ -70,7 +71,7 @@ class Facility:
 
     async def run_websocket_test(self):
         """Подключиться к тестовому порту"""
-        host = os.getenv("WEBSOCKET_HOST", socket.gethostbyname(socket.gethostname()))
+        host = "localhost" # os.getenv("WEBSOCKET_HOST", socket.gethostbyname(socket.gethostname()))
         url_test = f"ws://{host}:{self.port_test}"
         print(f"Подключаюсь к {url_test}")
         try:
@@ -150,6 +151,8 @@ if __name__ == "__main__":
     print(sys.path)
     server_app = os.path.join(os.path.dirname(__file__), 'server_web.py')
     subprocess.Popen([sys.executable, server_app, f"{ports[0]}-{ports[1]}-{ports[2]}-{ports[3]}"])
+
+    time.sleep(2)
 
     loop = asyncio.get_event_loop()
 
