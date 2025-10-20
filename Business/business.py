@@ -66,7 +66,7 @@ if __name__ == "__main__":
     aioapp = loop.run_until_complete(init_app())
     runner = web.AppRunner(aioapp)
     loop.run_until_complete(runner.setup())
-    site = web.TCPSite(runner, "127.0.0.1", 8000)
+    site = web.TCPSite(runner, "localhost", 8000)
     loop.run_until_complete(site.start())
 
     # 4) Бесконечный цикл

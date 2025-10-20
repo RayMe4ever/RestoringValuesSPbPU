@@ -129,15 +129,17 @@ class knn_model:
             print(
                 f"\n📊 Метрики для текущего батча:\n  🔹 MAPE (интерполяция/KNN): {inter_str}\n  🔹 MAPE (среднее): {mean_str}")
 
-            print(f'\n📈 Средняя ошибка модели (MAPE): {sum(self.mape_inter) / len(self.mape_inter):.6f}')
-            metrics["MAPE"] = sum(self.mape_inter) / len(self.mape_inter)
+            if len(self.mape_inter) != 0:
+                print(f'\n📈 Средняя ошибка модели (MAPE): {sum(self.mape_inter) / len(self.mape_inter):.6f}')
+                metrics["MAPE"] = sum(self.mape_inter) / len(self.mape_inter)
+            if len(self.mape_mean) != 0:
+                print(f'📉 Средняя ошибка при заполнении средним (MAPE): {sum(self.mape_mean) / len(self.mape_mean):.6f}')
+                metrics["MAPE_mean"] = sum(self.mape_mean) / len(self.mape_mean)
 
-            print(f'📉 Средняя ошибка при заполнении средним (MAPE): {sum(self.mape_mean) / len(self.mape_mean):.6f}')
-            metrics["MAPE_mean"] = sum(self.mape_mean) / len(self.mape_mean)
-
-            print(
+            if (len(self.mape_mean) != 0) and (len(self.mape_inter) != 0):
+                print(
                 f'🎯 Наша модель лучше в {round((sum(self.mape_mean) / len(self.mape_mean)) / (sum(self.mape_inter) / len(self.mape_inter)), 1)} раз!')
-            metrics["improvement"] = round((sum(self.mape_mean) / len(self.mape_mean)) / (sum(self.mape_inter) / len(self.mape_inter)), 3)
+                metrics["improvement"] = round((sum(self.mape_mean) / len(self.mape_mean)) / (sum(self.mape_inter) / len(self.mape_inter)), 3)
 
         return batch_interpolation, metrics
 
