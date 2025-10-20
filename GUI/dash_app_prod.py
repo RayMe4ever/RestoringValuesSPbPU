@@ -1,4 +1,4 @@
-import os
+import os, websockets, socket
 import requests
 import pandas as pd
 
@@ -522,4 +522,5 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
 
 if __name__ == "__main__":
     print("Запуск Dash-GUI (Polling-CSV)")
-    app.run(debug=True, host="0.0.0.0", port=8051)
+    host = os.getenv("WEBSOCKET_HOST", socket.gethostbyname(socket.gethostname()))
+    app.run(debug=True, host=host, port=8100)

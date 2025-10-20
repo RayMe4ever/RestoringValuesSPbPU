@@ -1,7 +1,7 @@
-import os
+import os, socket, websockets
 import requests
 import pandas as pd
-
+import time
 import dash
 from dash import dcc, html, dash_table, Input, Output, State
 import dash_bootstrap_components as dbc
@@ -12,7 +12,7 @@ import asyncio
 #  Константы и настройки
 # ----------------------
 
-BUSINESS_HTTP_BASE = "http://127.0.0.1:8000"
+BUSINESS_HTTP_BASE = "http://localhost:8000"
 
 # «Концептуальные» установки с портами (raw, filled/test)
 INSTALLATIONS = {
@@ -659,4 +659,5 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
 
 if __name__ == "__main__":
     print("Запуск Dash-GUI (Polling-CSV)")
-    app.run(debug=True, host="0.0.0.0", port=8050)
+    host=os.getenv("WEBSOCKET_HOST", socket.gethostbyname(socket.gethostname()))
+    app.run(debug=True, host=host, port=8099)
