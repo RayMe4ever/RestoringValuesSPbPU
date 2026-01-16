@@ -1,7 +1,5 @@
-import os, websockets, socket
-import requests
+import os, socket
 import pandas as pd
-
 import dash
 from dash import dcc, html, dash_table, Input, Output, State
 import dash_bootstrap_components as dbc
@@ -27,7 +25,7 @@ INSTALLATIONS = {
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
 server = app.server
 
-RECIEVER_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Reciever")
+RECIEVER_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Reciever", "received_data")
 BUSINESS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Business")
 # ----------------------
 #  Вспомогательная функция: список признаков из «длинного» CSV

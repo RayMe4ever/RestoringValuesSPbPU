@@ -111,34 +111,35 @@ class knn_model:
             self.mape_mean.append(mean)
 
         # Показываем именно batch с пропущенными значениями
-        print("\n📄 Батч с пропущенными значениями:")
-        print(batch)
-        print("\n📄 Батч с заполненными значениями:")
-        print(batch_interpolation)
+        #print("\n📄 Батч с пропущенными значениями:")
+        #print(batch)
+        #print("\n📄 Батч с заполненными значениями:")
+        #print(batch_interpolation)
 
         metrics = None
         # Финальный отчёт
         if batch_true is None:
-            print(f'\n✅ Успешное завершение задачи')
+            pass
+            #print(f'\n✅ Успешное завершение задачи')
         else:
             # Безопасный вывод метрик
             metrics = {}
 
             inter_str = f"{inter:.4f}" if inter is not None else "нет данных"
             mean_str = f"{mean:.4f}" if mean is not None else "нет данных"
-            print(
-                f"\n📊 Метрики для текущего батча:\n  🔹 MAPE (интерполяция/KNN): {inter_str}\n  🔹 MAPE (среднее): {mean_str}")
+            #print(
+            #    f"\n📊 Метрики для текущего батча:\n  🔹 MAPE (интерполяция/KNN): {inter_str}\n  🔹 MAPE (среднее): {mean_str}")
 
             if len(self.mape_inter) != 0:
-                print(f'\n📈 Средняя ошибка модели (MAPE): {sum(self.mape_inter) / len(self.mape_inter):.6f}')
+                #print(f'\n📈 Средняя ошибка модели (MAPE): {sum(self.mape_inter) / len(self.mape_inter):.6f}')
                 metrics["MAPE"] = sum(self.mape_inter) / len(self.mape_inter)
             if len(self.mape_mean) != 0:
-                print(f'📉 Средняя ошибка при заполнении средним (MAPE): {sum(self.mape_mean) / len(self.mape_mean):.6f}')
+                #print(f'📉 Средняя ошибка при заполнении средним (MAPE): {sum(self.mape_mean) / len(self.mape_mean):.6f}')
                 metrics["MAPE_mean"] = sum(self.mape_mean) / len(self.mape_mean)
 
             if (len(self.mape_mean) != 0) and (len(self.mape_inter) != 0):
-                print(
-                f'🎯 Наша модель лучше в {round((sum(self.mape_mean) / len(self.mape_mean)) / (sum(self.mape_inter) / len(self.mape_inter)), 1)} раз!')
+                #print(
+                #f'🎯 Наша модель лучше в {round((sum(self.mape_mean) / len(self.mape_mean)) / (sum(self.mape_inter) / len(self.mape_inter)), 1)} раз!')
                 metrics["improvement"] = round((sum(self.mape_mean) / len(self.mape_mean)) / (sum(self.mape_inter) / len(self.mape_inter)), 3)
 
         return batch_interpolation, metrics

@@ -15,7 +15,7 @@ class data_source:
         self.path_out_long = path_out_long
         self.path_metrics = path_metrics
 
-        self.dir_reciever = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Reciever")
+        self.dir_reciever = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Reciever", "received_data")
         self.dir_business = os.path.dirname(os.path.abspath(__file__))
         self.out_long = None
 

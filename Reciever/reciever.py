@@ -1,129 +1,137 @@
-import time
-import asyncio
-import websockets
-import json
-import os
-import socket
+# Reciever/reciever.py
 import csv
-from collections import deque
+import time
+import numpy as np
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
+import uvicorn
+import datetime
+import os
 
-# Словарь для хранения данных для каждого порта
-port_data = {}  # Формат: {port: {'buffer': deque(maxlen=300), 'names': list, 'columns_count': int}}
-port_data_long = {}  # Формат: {port: {'buffer': deque(maxlen=300), 'names': list, 'columns_count': int}}
+app = FastAPI(title="Data Receiver - REST API with NaN replacement")
+
+# Папка для хранения данных
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "received_data")
+
+# Константы
+SHORT_HISTORY = 10      # количество строк в обычном файле
+LONG_HISTORY = 1000     # количество строк в _long файле
+
+# Значения, которые нужно заменять на NaN
+BAD_VALUES = {-100, -100000, -400000}
 
 
-async def write_csv(port, buffer, filename):
-    """Записывает весь буфер в CSV файл"""
+def save_to_file(port: int, timestamp: float, names: list, time_str: str, values: list):
+    """
+    Сохраняет данные в два файла: короткий (10 строк) и длинный (1000 строк)
+    Заменяет плохие значения на np.nan
+    """
+    # Преобразуем значения: плохие → np.nan
+    cleaned_values = []
+    for v in values:
+        if v in BAD_VALUES:
+            cleaned_values.append(np.nan)
+        else:
+            cleaned_values.append(v)
+
+    # Подготовка строки данных
+    row = [timestamp] + cleaned_values
+
+    # Заголовки
+    headers = ["DateTime"] + names
+
+    # Функция для сохранения с ограничением количества строк
+    def append_and_truncate(filename, data_row: list, header_row: list, max_lines: int):
+        lines = []
+        file_exists = os.path.exists(filename)
+
+        if file_exists:
+            with open(filename, "r", newline="", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                lines = list(reader)
+
+        # Добавляем новую строку
+        if not file_exists or len(lines) == 0:
+            lines = [header_row]
+
+        lines.append(data_row)
+
+        # Оставляем только последние max_lines строк (сохраняем заголовок)
+        if len(lines) > max_lines + 1:  # +1 потому что заголовок
+            lines = [lines[0]] + lines[-(max_lines):]
+
+        # Перезаписываем файл
+        with open(filename, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerows(lines)
+
+    # Имена файлов
+    short_file = os.path.join(DATA_DIR, f"data_port_{port}.csv")
+    long_file = os.path.join(DATA_DIR, f"data_port_{port}_long.csv")
+
+    # Сохраняем в оба файла
+    append_and_truncate(short_file, row, headers, SHORT_HISTORY)
+    append_and_truncate(long_file, row, headers, LONG_HISTORY)
+
+
+@app.post("/data")
+async def receive_sensor_data(request: Request):
     try:
-        filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
-        with open(filepath, mode='w', newline='') as file:
-            writer = csv.writer(file)
+        data = await request.json()
 
-            # Записываем заголовки (timeStamp + имена колонок)
-            if port in port_data:
-                writer.writerow(['DateTime'] + port_data[port]['names'])
+        port = data.get("port")
+        if port is None:
+            raise ValueError("Поле 'port' обязательно")
 
-            # Записываем все данные из буфера
-            for row in buffer:
-                writer.writerow(row)
-        print(f"Данные записаны в {filepath} (строк: {len(buffer)})")
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        names_str = data.get("names", "[]")
+        time_str = data.get("timeStamp", "")
+        values_str = data.get("values", "[]")
 
-    except Exception as e:
-        print(f"Ошибка при записи в файл {filepath}: {e}")
-
-
-async def update_csv(port, values, timestamp=None):
-    """Обновляет данные и периодически записывает в CSV файл"""
-    if port not in port_data:
-        print(f"Ошибка: данные для порта {port} не инициализированы")
-        return
-
-    try:
-        # Добавляем timestamp в начало данных
-        full_values = [timestamp] + values
-
-        # Добавляем новые данные в буферы
-        port_data[port]['buffer'].append(full_values)
-        port_data_long[port]['buffer'].append(full_values)
-
-        # Записываем в файлы только при достижении определенного размера буфера или периодически
-        await write_csv(port, port_data[port]['buffer'], f"data_port_{port}.csv")
-        await write_csv(port, port_data_long[port]['buffer'], f"data_port_{port}_long.csv")
-
-    except Exception as e:
-        print(f"Ошибка при обновлении CSV для порта {port}: {e}")
-
-
-async def receive_data(websocket_port):
-    """Получить данные с websocket-порта"""
-    host = "localhost" # os.getenv("WEBSOCKET_HOST", socket.gethostbyname(socket.gethostname()))
-    uri = f"ws://{host}:{websocket_port}"
-
-    while True:  # Бесконечный цикл для переподключения
+        # Парсим списки (предполагаем, что приходят в виде строк JSON)
         try:
-            async with websockets.connect(uri) as websocket:
-                print(f"Подключено к порту {websocket_port}")
-
-                while True:
-                    try:
-                        response = await asyncio.wait_for(websocket.recv(), timeout=1.0)
-
-                        data = json.loads(response)
-
-                        # Проверяем наличие необходимых полей
-                        if 'names' in data:
-                            # Получаем timestamp из пакета или None
-                            timestamp = data.get('timeStamp', "None")
-
-                            # Если это первый пакет или names изменились, инициализируем
-                            if (websocket_port not in port_data or
-                                   port_data[websocket_port]['names'] != data['names']):
-                                port_data[websocket_port] = {
-                                    'buffer': deque(maxlen=10),
-                                    'names': data['names'],
-                                    'columns_count': len(data['names']) + 1  # +1 для timeStamp
-                                }
-                                port_data_long[websocket_port] = {
-                                    'buffer': deque(maxlen=1000),
-                                    'names': data['names'],
-                                    'columns_count': len(data['names']) + 1  # +1 для timeStamp
-                                }
-                            if 'None' in data:
-                                print(f"Получен None-пакет от порта {websocket_port}")
-                                await update_csv(websocket_port, "None", timestamp="None")
-                            # Обновляем CSV с новыми данными
-                            elif 'values' in data:
-                                await update_csv(websocket_port, data['values'], timestamp=timestamp)
-                        else:
-                            print(f"Получен некорректный пакет от порта {websocket_port}: {response}")
-
-                    except asyncio.TimeoutError:
-                        continue
-                    except websockets.exceptions.ConnectionClosed:
-                        print(f"Соединение с портом {websocket_port} закрыто, переподключаемся...")
-                        break
-                    except json.JSONDecodeError as e:
-                        print(f"Ошибка декодирования JSON от порта {websocket_port}: {e}")
-                        continue
-
+            names = values_str['names']
+            values = values_str['values']
         except Exception as e:
-            print(f"Ошибка подключения к порту {websocket_port}: {e}, повторная попытка через 5 секунд...")
-            await asyncio.sleep(5)
+            raise ValueError(f"Ошибка парсинга names/values: {e}")
+
+        if not isinstance(names, list) or not isinstance(values, list):
+            raise ValueError("names и values должны быть списками")
+
+        if len(names) != len(values):
+            raise ValueError("Количество имён и значений не совпадает")
+
+        # Сохраняем данные
+        save_to_file(port, timestamp, names, time_str, values)
+
+        return JSONResponse({
+            "status": "received",
+            "port": port,
+            "values_count": len(values),
+            "received_at": time.time()
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
-async def listen_ports(ports):
-    """Обрабатывать каждый из портов"""
-    tasks = [asyncio.create_task(receive_data(port)) for port in ports]
-    await asyncio.gather(*tasks)
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
 
 if __name__ == "__main__":
-    arg = "8092-8093-8094-8095"
-    print(f"Ресивер-коллектор запущен с аргументами: {arg}")#{sys.argv}")
-    ports = [int(p) for p in arg.split('-')]#sys.argv[1].split('-')]
+    #print("Запуск REST-приёмника данных...")
+    #print(f"Сохранение в: {DATA_DIR}")
+    #print(f"Формат файлов:")
+    #print(f"  • data_port_XXXX.csv      — последние {SHORT_HISTORY} значений")
+    #print(f"  • data_port_XXXX_long.csv — последние {LONG_HISTORY} значений")
+    #print("Значения -100 / -100000 / -400000 заменяются на NaN\n")
 
-
-    time.sleep(4)
-    try:
-        asyncio.run(listen_ports(ports))
-    except KeyboardInterrupt:
-        print("Завершение работы...")
+    uvicorn.run(
+        "reciever:app",
+        host="0.0.0.0",
+        port=8001,
+        reload=True,
+        log_level="info"
+    )

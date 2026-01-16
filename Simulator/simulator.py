@@ -1,182 +1,129 @@
 import time
-import json
-import sys
-import numpy as np
-import pandas as pd
-import subprocess
-import websockets, os, socket
-import asyncio
 import random
+import requests
+import os
+from datetime import datetime
+import pandas as pd
 
+# Конфигурация
+SERVER_URL = "http://127.0.0.1:8001/data"  # ← поменяйте при необходимости
+INTERVAL = 5.0  # примерно как было в websocket-варианте
+
+PORTS = [8092, 8093, 8094, 8095]
+
+# Вероятность пропуска значения для "плохих" портов
 files = ["PowerConsumption1.csv", "energydata_complete.csv"]
-ports = [8092, 8093, 8094, 8095]
-chances = [0.0125, 0.025]
-intervals = [5000, 7000]
-time_format='%Y-%m-%d %H:%M:%S'
+chances = [0.30, 0.20]
+file_readers = []
 
-class Facility:
-    port_main = None # Порт для имитации реальной работы установки
-    port_test = None # Порт для отправки данных без помех
-    file_path = None # Путь к файлу с данными
-    client_main = None # Объект клиента для главного порта
-    client_test = None # Объект клиента для тестового порта
+# Порты без пропусков
+CLEAN_PORTS = {8093, 8095}
 
-    row_min = None # Минимальная строка, в которой может считываться файл
-    row_cur = None # Текущая строка, в которой считывается файл
-    row_max = None # Максимальная строка, в которой может считываться файл
-
-    interval = None  # Время в миллисекундах между переходами на следующие строчки
-
-    points = None # Точки, полученные из файла
-    columns = None # Список колонок файла
-
-    chance = None # Вероятность пропуска данных
-    chance_seq = None # Мультипликатор вероятости в случае если предыдущая запись - пропуск
-    _is_empty = None # Предыдущая запись - пропуск?
-
-    def __init__(self, port_main, port_test, file_path, interval, chance, time_format):
-        self.port_main = port_main
-        self.port_test = port_test
-        self.file_path = file_path
-        self.interval = interval
-        self.chance = chance
-
-        self.read_file()
-        self.time_format = time_format
-        _is_empty = False
-        asyncio.get_event_loop().run_until_complete(self.run_websocket_main())
-        asyncio.get_event_loop().run_until_complete(self.run_websocket_test())
-
-    def read_file(self):
+class file_reader:
+    def __init__(self, file_name, chance, ports):
         """Считать данные из .csv файла"""
-        csv_path = os.path.join(os.path.dirname(__file__), self.file_path)
+        csv_path = os.path.join(os.path.dirname(__file__), file_name)
         data = pd.read_csv(csv_path).dropna()
-
-        self.points = data.values #self.data.iloc[:, [0, 1]].values
+        self.chance = chance
+        self.points = data.values
         self.columns = data.columns[1:]
         self.row_min = self.row_cur = 0
         self.row_max = data.iloc[:, 1].size - 5
+        self.time_format='%Y-%m-%d %H:%M:%S'
+        self.ports = ports
 
-    async def run_websocket_main(self):
-        """Подключиться к главному порту"""
-        host = "localhost" #os.getenv("WEBSOCKET_HOST", socket.gethostbyname(socket.gethostname()))
-        url_main = f"ws://{host}:{self.port_main}"
-        print(f"Подключаюсь к {url_main}")
-        try:
-            self.client_main = await websockets.connect(url_main)
-            print("Подключение установлено")
-        except Exception as e:
-            print(f"Ошибка подключения: {e}")
-            raise
 
-    async def run_websocket_test(self):
-        """Подключиться к тестовому порту"""
-        host = "localhost" # os.getenv("WEBSOCKET_HOST", socket.gethostbyname(socket.gethostname()))
-        url_test = f"ws://{host}:{self.port_test}"
-        print(f"Подключаюсь к {url_test}")
-        try:
-            self.client_test = await websockets.connect(url_test)
-            print("Подключение установлено")
-        except Exception as e:
-            print(f"Ошибка подключения: {e}")
-            raise
     def parse_timestamp(self, timestamp):
         """Привести временную метку к единому формату"""
         return pd.to_datetime(timestamp).strftime(self.time_format)
-    async def upload_main(self, res):
-        """Загрузить пакет данных на главный порт"""
-        try:
-            if self.client_main is None or not self.client_main.open:
-                await self.run_websocket_main()
-            await self.client_main.send(json.dumps(res))
-        except Exception as e:
-            print(f"Ошибка отправки (main): {e}")
-            await self.run_websocket_main()  # Переподключение
 
-    async def upload_test(self, res):
-        """Загрузить пакет данных на тестовый порт"""
-        try:
-            if self.client_test is None or not self.client_test.open:
-                await self.run_websocket_test()
-            await self.client_test.send(json.dumps(res))
-        except Exception as e:
-            print(f"Ошибка отправки (test): {e}")
-            await self.run_websocket_test()  # Переподключение
+    def generate_values(self):
+        """Генерация значений примерно как в оригинале"""
+        res_clean = {  # Формирование пакета данных
+            'names': self.columns.tolist(),
+            'values': self.points[self.row_cur, 1:].tolist(),
+        }
 
-    async def simulation(self):
-        """Имитация работы установки"""
-        while True:
+        points_out = []
+        for i in range(1, self.points.shape[1]):
+            if random.random() <= self.chance:
+                points_out.append(-400000)
+            else:
+                points_out.append(self.points[self.row_cur, i])
+
+        res = {
+            'names': self.columns.tolist(),
+            'values': points_out,
+        }
+
+        return res, res_clean
+
+    def next_step(self):
+        self.row_cur += 1
+        if self.row_cur >= self.row_max:
+            self.row_cur = 0
+
+def main():
+    #print("REST-simulator started")
+    #print(f"Sending to: {SERVER_URL}")
+    #print(f"Ports: {PORTS}")
+    #print(f"Clean ports (no misses): {sorted(CLEAN_PORTS)}")
+    #print("-" * 60)
+
+    file_reader1 = file_reader(files[0], chances[0], PORTS[0:2])
+    file_reader2 = file_reader(files[1], chances[1], PORTS[2:4])
+    file_readers = [file_reader1, file_reader2]
+
+    session = requests.Session()
+
+    while True:
+        for f_reader in file_readers:
             try:
-                self.row_cur += 1
-                if self.row_cur >= self.row_max:
-                    self.row_cur = self.row_min
-
-                res = { #Формирование пакета данных
-                    'names': self.columns.tolist(),
-                    'values': self.points[self.row_cur, 1:].tolist(),
-                    'timeStamp': self.parse_timestamp(self.points[self.row_cur, 0]),
-                    'iteration': self.row_cur
+                data_missed, data_clean =  f_reader.generate_values()
+                f_reader.next_step()
+                payload = {
+                    "port": f_reader.ports[0],
+                    "timestamp": time.time(),
+                    "values": data_missed
+                }
+                payload_clean = {
+                    "port": f_reader.ports[1],
+                    "timestamp": time.time(),
+                    "values": data_clean
                 }
 
-                await self.upload_test(res)
+                r = session.post(SERVER_URL, json=payload, timeout=2.5)
+                if r.status_code == 200:
+                    status = "✓"
+                else:
+                    status = f"✗ {r.status_code}"
 
-                points_out = []
-                for i in range(1, self.points.shape[1]):
-                    if random.random() <= self.chance:
-                        points_out.append(np.nan)
-                    else:
-                        points_out.append(self.points[self.row_cur, i])
+                misses = sum(1 for v in payload["values"].values() if v is None)
+                #print(f"[{datetime.now().strftime('%H:%M:%S.%f')[:-3]}] "
+                #      f"port {f_reader.ports[0]} | {status} | misses: {misses}")
 
-                res = {'names': self.columns.tolist(),
-                       'values': points_out,
-                       'timeStamp': self.parse_timestamp(self.points[self.row_cur, 0]),
-                       'iteration': self.row_cur
-                       }
+                r_clean = session.post(SERVER_URL, json=payload_clean, timeout=2.5)
+                if r_clean.status_code == 200:
+                    status = "✓"
+                else:
+                    status = f"✗ {r.status_code}"
 
-                await self.upload_main(res)
+                misses = sum(1 for v in payload["values"].values() if v is None)
+                #print(f"[{datetime.now().strftime('%H:%M:%S.%f')[:-3]}] "
+                #      f"port {f_reader.ports[1]} | {status} | misses: {misses}")
+
 
             except Exception as e:
-                print(f"Критическая ошибка в simulation: {e}")
-                await asyncio.sleep(5)
-                continue
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] → error: {e}")
 
-            await asyncio.sleep(self.interval / 1000)
+            time.sleep(INTERVAL / len(PORTS))
 
-async def run_simulation():
-    """Запустить параллельно симуляцию обеих установок"""
-    await asyncio.gather(facility_1.simulation(), facility_2.simulation())
+        # Небольшая пауза между циклами по всем портам
+        time.sleep(0.1)
+
 
 if __name__ == "__main__":
-    print(sys.executable)
-    print(sys.path)
-    server_app = os.path.join(os.path.dirname(__file__), 'server_web.py')
-    subprocess.Popen([sys.executable, server_app, f"{ports[0]}-{ports[1]}-{ports[2]}-{ports[3]}"])
-
-    time.sleep(2)
-
-    loop = asyncio.get_event_loop()
-
-    facility_1 = Facility(
-        port_main=ports[0],
-        port_test=ports[1],
-        file_path=files[0],
-        interval=intervals[0],
-        chance=chances[0],
-        time_format=time_format
-        )
-
-    facility_2 = Facility(
-        port_main=ports[2],
-        port_test=ports[3],
-        file_path=files[1],
-        interval=intervals[1],
-        chance=chances[1],
-        time_format=time_format
-    )
-
     try:
-        loop.run_until_complete(run_simulation())
+        main()
     except KeyboardInterrupt:
-        pass
-    finally:
-        loop.close()
+        print("\nОстановлено")
