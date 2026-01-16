@@ -7,11 +7,15 @@ from fastapi.responses import JSONResponse
 import uvicorn
 import datetime
 import os
+import shutil
 
 app = FastAPI(title="Data Receiver - REST API with NaN replacement")
 
 # Папка для хранения данных
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "received_data")
+DATA_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "received_data"
+)
 
 # Константы
 SHORT_HISTORY = 10      # количество строк в обычном файле
@@ -127,6 +131,10 @@ if __name__ == "__main__":
     #print(f"  • data_port_XXXX.csv      — последние {SHORT_HISTORY} значений")
     #print(f"  • data_port_XXXX_long.csv — последние {LONG_HISTORY} значений")
     #print("Значения -100 / -100000 / -400000 заменяются на NaN\n")
+
+    if os.path.exists(DATA_DIR):
+        shutil.rmtree(DATA_DIR)
+    os.makedirs(DATA_DIR, exist_ok=True)
 
     uvicorn.run(
         "reciever:app",
