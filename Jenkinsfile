@@ -58,7 +58,7 @@ pipeline {
           python Business/business.py    > run_output/business.log  2>&1 &
           BUS_PID=$!
 
-          sleep 30
+          sleep 300
 
           kill $BUS_PID $REC_PID $SIM_PID 2>/dev/null || true
           sleep 2
