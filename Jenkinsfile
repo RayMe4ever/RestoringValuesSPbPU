@@ -13,9 +13,7 @@ pipeline {
 
   stages {
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
+      steps { checkout scm }
     }
 
     stage('Prepare venv + deps') {
@@ -48,7 +46,6 @@ pipeline {
         sh '''
           set -e
           mkdir -p run_output
-
           . "$VENV/bin/activate"
 
           python Simulator/simulator.py  > run_output/simulator.log 2>&1 &
