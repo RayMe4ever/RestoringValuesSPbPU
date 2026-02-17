@@ -1,6 +1,7 @@
 import os
 import requests
 import pandas as pd
+from typing import Optional
 
 import dash
 from dash import dcc, html, dash_table, Input, Output, State
@@ -29,6 +30,26 @@ server = app.server
 
 RECIEVER_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Reciever")
 BUSINESS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Business")
+
+# ----------------------
+#  Безопасное чтение CSV
+# ----------------------
+
+def safe_read_csv(path: str, nrows: Optional[int] = None) -> Optional[pd.DataFrame]:
+    """Читает CSV максимально устойчиво к гонкам записи.
+
+    Возвращает None, если файл отсутствует/пустой/в процессе записи и не парсится.
+    """
+    try:
+        if (not os.path.exists(path)) or (os.path.getsize(path) == 0):
+            return None
+        if nrows is None:
+            return pd.read_csv(path)
+        return pd.read_csv(path, nrows=nrows)
+    except Exception:
+        return None
+
+
 # ----------------------
 #  Вспомогательная функция: список признаков из «длинного» CSV
 # ----------------------
@@ -286,8 +307,20 @@ def apply_interval_all_ports(n_clicks, new_interval):
 #  Callback 3: Строим два графика, метрику, таблицу «out» и таблицу «metrics»
 # ----------------------
 
+
+# ----------------------
+#  Стратегия чтения CSV для out-table
+# ----------------------
+#
+# Вариант по умолчанию (самый надёжный для стриминга): *читаем CSV на каждом тике* dcc.Interval.
+# Это убирает баг «залипания» данных из-за некорректного сравнения mtime(out) vs mtime(input).
+#
+# Альтернатива (если CSV очень большие): mtime-кэш. Для включения — раскомментируйте блок в секции #7.
+#
 df_out = None
 df_input = None
+# last_mtime_out = None
+# last_mtime_in = None
 
 @app.callback(
     Output("line-chart-raw", "figure"),
@@ -367,7 +400,7 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
 
     # 6) Поток «заполненные» данные (filled_long) не меняется – он нужен для графика 2
     fig_filled = {
-        "data": [], 
+        "data": [],
         "layout": {
             "title": {"text": "Нет заполненных данных", "font": {"color": "white"}},
             "paper_bgcolor": "#1A2138",
@@ -563,47 +596,92 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
         data_info = ""
 
     # 7) Таблица out: читаем из Business/data_out_<filled_port>.csv
-    if os.path.exists(out_path):
+    # ----------------------------------------------------
+    # Важно: в исходной версии был «mtime-кэш» вида:
+    #   if mtime(out) >= mtime(input): read_csv(...)
+    # Это приводит к «залипанию» данных, когда input обновляется чаще out (типично для стрима).
+    # По умолчанию читаем CSV на каждый тик; ниже оставлен вариант mtime-кэша (закомментирован).
+    out_table_data = []
+    if os.path.exists(out_path) and os.path.exists(input_path):
         try:
-            global df_out, df_input
+            # ===== Вариант по умолчанию: всегда читаем свежие CSV =====
+            df_out_cur = safe_read_csv(out_path)
+            df_in_cur = safe_read_csv(input_path)
 
-            if (os.path.getmtime(out_path) >= os.path.getmtime(input_path)) or (df_out is None) or (df_input is None):
-                df_out = pd.read_csv(out_path)
-                df_input = pd.read_csv(input_path)
+            # ===== Альтернатива: mtime-кэш (раскомментируйте при необходимости) =====
+            # global df_out, df_input, last_mtime_out, last_mtime_in
+            # m_out = os.path.getmtime(out_path)
+            # m_in = os.path.getmtime(input_path)
+            # if (df_out is None) or (df_input is None) or (last_mtime_out != m_out) or (last_mtime_in != m_in):
+            #     df_out = pd.read_csv(out_path)
+            #     df_input = pd.read_csv(input_path)
+            #     last_mtime_out = m_out
+            #     last_mtime_in = m_in
+            # df_out_cur = df_out
+            # df_in_cur = df_input
 
-            # Фильтруем по дате, если нужно
-            dff_out = df_out.copy()
-            dff_input = df_input.copy()
-
-            if start_date:
-                dff_out = dff_out[dff_out["DateTime"] >= start_date]
-                dff_input = dff_input[dff_input["DateTime"] >= start_date]
-            if end_date:
-                dff_out = dff_out[dff_out["DateTime"] <= end_date]
-                dff_input = dff_input[dff_input["DateTime"] <= end_date]
-
-            # Заполняем out_table_data только двумя колонками: DateTime и значение признака
-            out_table_data = []
-            if feature in dff_out.columns:
-                for index, row in dff_out.iterrows():
-                    out_table_data.append({
-                        "DateTime": row["DateTime"],
-                        "input": dff_input.iloc[index][feature],
-                        "value": row[feature]
-                    })
+            if df_out_cur is None or df_in_cur is None:
+                out_table_data = []
             else:
-                # Если вдруг в out CSV нет выбранного признака,
-                # то возьмём первый столбец после DateTime
-                cols_out = [c for c in dff_out.columns if c != "DateTime"]
-                if cols_out:
-                    col0 = cols_out[0]
-                    for index, row in dff_out.iterrows():
-                        out_table_data.append({
-                            "DateTime": row["DateTime"],
-                            "input": dff_input.iloc[index][col0],
-                            "value": row[col0]
-                        })
-        except:
+                dff_out = df_out_cur.copy()
+                dff_in = df_in_cur.copy()
+
+                # Фильтрация по датам (если DateTime есть)
+                if start_date and "DateTime" in dff_out.columns:
+                    dff_out = dff_out[dff_out["DateTime"] >= start_date]
+                if end_date and "DateTime" in dff_out.columns:
+                    dff_out = dff_out[dff_out["DateTime"] <= end_date]
+
+                if start_date and "DateTime" in dff_in.columns:
+                    dff_in = dff_in[dff_in["DateTime"] >= start_date]
+                if end_date and "DateTime" in dff_in.columns:
+                    dff_in = dff_in[dff_in["DateTime"] <= end_date]
+
+                # Выбираем колонку в out
+                if feature and feature in dff_out.columns:
+                    out_col = feature
+                else:
+                    cols_out = [c for c in dff_out.columns if c != "DateTime"]
+                    out_col = cols_out[0] if cols_out else None
+
+                if out_col is None or "DateTime" not in dff_out.columns:
+                    out_table_data = []
+                else:
+                    # Выбираем колонку во входе (предпочтительно ту же)
+                    if feature and feature in dff_in.columns:
+                        in_col = feature
+                    elif out_col in dff_in.columns:
+                        in_col = out_col
+                    else:
+                        cols_in = [c for c in dff_in.columns if c != "DateTime"]
+                        in_col = cols_in[0] if cols_in else None
+
+                    # Сопоставляем по DateTime (устойчивее, чем iloc по индексам)
+                    if ("DateTime" in dff_in.columns) and (in_col is not None):
+                        merged = pd.merge(
+                            dff_out[["DateTime", out_col]],
+                            dff_in[["DateTime", in_col]],
+                            on="DateTime",
+                            how="left",
+                            suffixes=("_out", "_in"),
+                        )
+                        out_table_data = [
+                            {"DateTime": r["DateTime"], "input": r.get(in_col), "value": r.get(out_col)}
+                            for _, r in merged.iterrows()
+                        ]
+                    else:
+                        # Фоллбек: просто по минимуму длины (на случай неполных CSV)
+                        n = min(len(dff_out), len(dff_in))
+                        out_table_data = []
+                        for i in range(n):
+                            out_table_data.append(
+                                {
+                                    "DateTime": dff_out.iloc[i].get("DateTime", ""),
+                                    "input": dff_in.iloc[i].get(in_col, None) if in_col else None,
+                                    "value": dff_out.iloc[i].get(out_col, None),
+                                }
+                            )
+        except Exception:
             out_table_data = []
     else:
         out_table_data = []
@@ -659,4 +737,4 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
 
 if __name__ == "__main__":
     print("Запуск Dash-GUI (Polling-CSV)")
-    app.run(debug=True, host="0.0.0.0", port=8050)
+    app.run(debug=False, host="0.0.0.0", port=8050)
