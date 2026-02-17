@@ -39,10 +39,19 @@ async def init_app():
 
 async def prediction_loop():
     while True:
-        for task in tasks:
-            batch, batch_true = task[1].load_batches() # Реальный запуск
-            batch_filled, metrics = task[0].imputation(batch, batch_true)
-            task[1].write_out(batch_filled, metrics)
+        try:
+            for task in tasks:
+                batch, batch_true = task[1].load_batches()
+
+                # Данных ещё нет → ждём
+                if batch is None:
+                    continue
+
+                batch_filled, metrics = task[0].imputation(batch, batch_true)
+                task[1].write_out(batch_filled, metrics)
+
+        except Exception as e:
+            print(f"[business] prediction_loop error: {e}")
 
         await asyncio.sleep(model_delay/1000)
 
