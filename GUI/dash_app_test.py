@@ -76,13 +76,9 @@ def get_feature_options(raw_port: int):
 
 app.layout = html.Div([
     dbc.Row([
-        # ===========================================
-        #  Левое меню: выбор установки, интервала, признака, диапазона
-        # ===========================================
         dbc.Col([
             html.H2("Панель управления", style={"marginBottom": "1rem", "color": "white"}),
 
-            # 1) Выбор «концептуальной» установки
             html.Div([
                 dbc.Label("Выберите установку", style={"color": "white"}),
                 dcc.Dropdown(
@@ -95,7 +91,6 @@ app.layout = html.Div([
                 ),
             ]),
 
-            # 2) Интервал интерполяции (мс)
             html.Div([
                 dbc.Label("Интервал интерполяции (мс)", style={"color": "white"}),
                 dbc.Input(
@@ -118,12 +113,11 @@ app.layout = html.Div([
                 ),
             ], className="mb-4"),
 
-            # 3) Выбор признака
             html.Div([
                 dbc.Label("Выберите признак", style={"color": "white"}),
                 dcc.Dropdown(
                     id="dropdown-feature",
-                    options=[],   # заполняется динамически
+                    options=[],
                     value=None,
                     clearable=False,
                     style={"backgroundColor": "white", "color": "black"},
@@ -131,7 +125,6 @@ app.layout = html.Div([
                 ),
             ]),
 
-            # 4) Диапазон дат
             html.Div([
                 dbc.Label("Диапазон дат (необязательно)", style={"color": "white"}),
                 dcc.DatePickerRange(
@@ -144,7 +137,6 @@ app.layout = html.Div([
                 ),
             ]),
 
-            # 5) Статус соединения / сбора данных
             html.Div(
                 id="status-message",
                 style={"marginTop": "1rem", "color": "#FFD700", "minHeight": "1.5rem"}
@@ -152,58 +144,28 @@ app.layout = html.Div([
 
         ], width=3, style={"padding": "1rem", "backgroundColor": "#1A2138", "height": "100vh"}),
 
-        # ===========================================
-        #  Правая часть: два графика, метрика, инфо о записях, таблицы out и metrics-файлов
-        # ===========================================
         dbc.Col([
-            # —————————————————————————————————————————
-            # График 1: «сырые» данные (raw_port)
-            # —————————————————————————————————————————
             html.H4("Сырые данные", style={"color": "white"}),
-            dcc.Graph(
-                id="line-chart-raw",
-                style={"height": "25vh"}
-            ),
+            dcc.Graph(id="line-chart-raw", style={"height": "25vh"}),
 
             html.Hr(style={"borderColor": "#444"}),
 
-            # —————————————————————————————————————————
-            # График 2: «истинные» данные (filled_port)
-            # —————————————————————————————————————————
             html.H4("Данные без пропусков", style={"color": "white", "marginTop": "1rem"}),
-            dcc.Graph(
-                id="line-chart-filled",
-                style={"height": "25vh"}
-            ),
+            dcc.Graph(id="line-chart-filled", style={"height": "25vh"}),
 
             html.Hr(style={"borderColor": "#444", "marginTop": "1rem"}),
 
-            # —————————————————————————————————————————
-            # График 2: «заполненные» данные (filled_port)
-            # —————————————————————————————————————————
             html.H4("Заполнение пропусков", style={"color": "white", "marginTop": "1rem"}),
-            dcc.Graph(
-                id="line-out-long",
-                style={"height": "25vh"}
-            ),
+            dcc.Graph(id="line-out-long", style={"height": "25vh"}),
 
             html.Hr(style={"borderColor": "#444", "marginTop": "1rem"}),
 
-            # —————————————————————————————————————————
-            # Блок «Метрика модели» (последняя строчка из metrics)
-            # —————————————————————————————————————————
             html.H4("Метрика работы модели", style={"color": "white", "marginTop": "1rem"}),
             html.Div(id="metrics-info", style={"color": "white", "marginBottom": "1rem"}),
 
-            # —————————————————————————————————————————
-            # Информация о «записях» заполненных данных
-            # —————————————————————————————————————————
             html.H4("Информация о записях", style={"color": "white", "marginTop": "1rem"}),
             html.Div(id="data-info", style={"color": "white", "marginBottom": "1rem"}),
 
-            # —————————————————————————————————————————
-            # Таблица «out»-файла (теперь из Business/data_out_<port>.csv)
-            # —————————————————————————————————————————
             html.H4("Таблица обработки батча", style={"color": "white", "marginTop": "1rem"}),
             dash_table.DataTable(
                 id="out-table",
@@ -221,13 +183,10 @@ app.layout = html.Div([
 
             html.Hr(style={"borderColor": "#444", "marginTop": "1rem"}),
 
-            # —————————————————————————————————————————
-            # Таблица «metrics»-файла (вся история метрик из Business)
-            # —————————————————————————————————————————
             html.H4("Таблица metrics (история метрик)", style={"color": "white", "marginTop": "1rem"}),
             dash_table.DataTable(
                 id="metrics-file-table",
-                columns=[],  # будем заполнять динамически
+                columns=[],
                 data=[],
                 page_size=10,
                 style_header={"backgroundColor": "#1A2138", "color": "white"},
@@ -235,23 +194,12 @@ app.layout = html.Div([
                 style_table={"overflowX": "auto"},
             ),
 
-            # —————————————————————————————————————————
-            # Интервал опроса (каждые 2000 мс)
-            # —————————————————————————————————————————
-            dcc.Interval(
-                id="interval-update",
-                interval=2000,
-                n_intervals=0
-            ),
+            dcc.Interval(id="interval-update", interval=2000, n_intervals=0),
         ], width=9, style={"padding": "1rem"}),
 
     ])
 ])
 
-
-# ----------------------
-#  Callback 1: Обновляем список признаков (dropdown-feature)
-# ----------------------
 
 @app.callback(
     Output("dropdown-feature", "options"),
@@ -272,10 +220,6 @@ def update_feature_options(inst, n_intervals, current_feature):
     return opts, default
 
 
-# ----------------------
-#  Callback 2: «Применить интервал» для всех портов
-# ----------------------
-
 async def interval_send(new_interval):
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -284,12 +228,12 @@ async def interval_send(new_interval):
         ) as response:
             return response
 
+
 @app.callback(
     Output("apply-interval-msg", "children"),
     Input("btn-apply-interval", "n_clicks"),
     State("input-interval", "value"),
 )
-
 def apply_interval_all_ports(n_clicks, new_interval):
     if not n_clicks:
         return ""
@@ -301,11 +245,6 @@ def apply_interval_all_ports(n_clicks, new_interval):
             return "Ошибка при применении интервала"
     except Exception as e:
         return f"Ошибка: {e}"
-
-
-# ----------------------
-#  Callback 3: Строим два графика, метрику, таблицу «out» и таблицу «metrics»
-# ----------------------
 
 
 # ----------------------
@@ -321,6 +260,7 @@ df_out = None
 df_input = None
 # last_mtime_out = None
 # last_mtime_in = None
+
 
 @app.callback(
     Output("line-chart-raw", "figure"),
@@ -338,7 +278,6 @@ df_input = None
     State("date-picker", "start_date"),
     State("date-picker", "end_date"),
 )
-
 def update_visualization(n_intervals, inst, feature, start_date, end_date):
     raw_port, filled_port = INSTALLATIONS[inst]
 
@@ -347,38 +286,34 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
     filled_path = os.path.join(RECIEVER_DIR, f"data_port_{filled_port}_long.csv")
     out_path_long = os.path.join(BUSINESS_DIR, f"data_out_{raw_port}_long.csv")
 
-    out_path = os.path.join(BUSINESS_DIR, f"data_out_{filled_port}.csv")
+    # Для таблицы обработки батча предпочтительнее брать output по raw_port (результат заполнения пропусков).
+    # Если такого snapshot-файла нет, падаем обратно на test/output по filled_port.
+    out_path = os.path.join(BUSINESS_DIR, f"data_out_{raw_port}.csv")
+    if not os.path.exists(out_path):
+        out_path = os.path.join(BUSINESS_DIR, f"data_out_{filled_port}.csv")
 
-    # Путь к metrics-файлу (в папке Business)
     metrics_path = os.path.join(BUSINESS_DIR, f"data_metrics_{filled_port}.csv")
 
-    # 1) Если нет «длинного» raw – рисуем «пусто»
     if not os.path.exists(raw_path):
         return {}, {}, {}, "", "", "", [], [], []
 
-    # 2) Читаем raw_long
     try:
         df_long = pd.read_csv(raw_path)
     except:
         return {}, {}, {}, "", "", "Ошибка при чтении CSV", [], [], []
 
-
-    # Если все DateTime пусты → «Потеря соединения»
     if df_long["DateTime"].isnull().all():
         return {}, {}, {}, "", "", "Потеря соединения с установкой", [], [], []
 
-    # 3) Фильтруем по дате для сырых
     dff_raw = df_long.copy()
     if start_date:
         dff_raw = dff_raw[dff_raw["DateTime"] >= start_date]
     if end_date:
         dff_raw = dff_raw[dff_raw["DateTime"] <= end_date]
 
-    # 4) Если feature не в колонках или dff_raw.empty → «Нет данных»
     if not feature or feature not in dff_raw.columns or dff_raw.empty:
         return {}, {}, {}, "", "", "Нет данных для выбранного признака/диапазона", [], [], []
 
-    # 5) Строим график 1: «сырые» данные
     fig_raw = {
         "data": [{
             "x": dff_raw["DateTime"],
@@ -398,7 +333,6 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
         }
     }
 
-    # 6) Поток «заполненные» данные (filled_long) не меняется – он нужен для графика 2
     fig_filled = {
         "data": [],
         "layout": {
@@ -412,7 +346,6 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
         }
     }
 
-    # 6) Поток «заполненные» данные (filled_long) не меняется – он нужен для графика 2
     fig_out_long = {
         "data": [],
         "layout": {
@@ -427,7 +360,6 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
     }
 
     data_info = ""
-    out_table_data = []
 
     if os.path.exists(filled_path):
         try:
@@ -438,20 +370,14 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
             if end_date:
                 dff_filled = dff_filled[dff_filled["DateTime"] <= end_date]
 
-            # Определяем y_filled
             if feature in dff_filled.columns:
                 used_col = feature
                 y_filled = dff_filled[feature]
             else:
                 candidates = [c for c in dff_filled.columns if c != "DateTime"]
-                if candidates:
-                    used_col = candidates[0]
-                    y_filled = dff_filled[used_col]
-                else:
-                    used_col = None
-                    y_filled = []
+                used_col = candidates[0] if candidates else None
+                y_filled = dff_filled[used_col] if used_col else []
 
-            # График 2: «заполненные» данные
             if not dff_filled.empty and used_col:
                 fig_filled = {
                     "data": [{
@@ -471,45 +397,15 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
                         "margin": {"l": 50, "r": 20, "t": 40, "b": 30}
                     }
                 }
-
-                # Информация о записях (filled_long)
                 count = len(dff_filled)
                 min_date = dff_filled["DateTime"].min()
                 max_date = dff_filled["DateTime"].max()
-                data_info = (
-                    f"Количество записей: {count}. "
-                    f"Первая дата: {min_date}. "
-                    f"Последняя дата: {max_date}."
-                )
+                data_info = f"Количество записей: {count}. Первая дата: {min_date}. Последняя дата: {max_date}."
             else:
                 data_info = "Нет обработанных данных"
         except:
-            fig_filled = {
-                "data": [],
-                "layout": {
-                    "title": {"text": "Нет заполненных данных", "font": {"color": "white"}},
-                    "paper_bgcolor": "#1A2138",
-                    "plot_bgcolor": "#202946",
-                    "font": {"color": "white"},
-                    "xaxis": {"color": "white", "gridcolor": "#444"},
-                    "yaxis": {"color": "white", "gridcolor": "#444"},
-                    "margin": {"l": 50, "r": 20, "t": 40, "b": 30}
-                }
-            }
             data_info = ""
     else:
-        fig_filled = {
-            "data": [],
-            "layout": {
-                "title": {"text": "Нет заполненных данных", "font": {"color": "white"}},
-                "paper_bgcolor": "#1A2138",
-                "plot_bgcolor": "#202946",
-                "font": {"color": "white"},
-                "xaxis": {"color": "white", "gridcolor": "#444"},
-                "yaxis": {"color": "white", "gridcolor": "#444"},
-                "margin": {"l": 50, "r": 20, "t": 40, "b": 30}
-            }
-        }
         data_info = ""
 
     if os.path.exists(out_path_long):
@@ -521,25 +417,19 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
             if end_date:
                 dff_out_long = dff_out_long[dff_out_long["DateTime"] <= end_date]
 
-            # Определяем y_filled
             if feature in dff_out_long.columns:
                 used_col = feature
-                y_filled = dff_out_long[feature]
+                y_out = dff_out_long[feature]
             else:
                 candidates = [c for c in dff_out_long.columns if c != "DateTime"]
-                if candidates:
-                    used_col = candidates[0]
-                    y_filled = dff_out_long[used_col]
-                else:
-                    used_col = None
-                    y_filled = []
+                used_col = candidates[0] if candidates else None
+                y_out = dff_out_long[used_col] if used_col else []
 
-            # График 2: «заполненные» данные
             if not dff_out_long.empty and used_col:
                 fig_out_long = {
                     "data": [{
                         "x": dff_out_long["DateTime"],
-                        "y": y_filled,
+                        "y": y_out,
                         "type": "line",
                         "name": f"filled: {used_col}",
                         "line": {"color": "#FF901E"}
@@ -554,57 +444,13 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
                         "margin": {"l": 50, "r": 20, "t": 40, "b": 30}
                     }
                 }
-
-                # Информация о записях (filled_long)
-                count = len(dff_out_long)
-                min_date = dff_out_long["DateTime"].min()
-                max_date = dff_out_long["DateTime"].max()
-                data_info = (
-                    f"Количество записей: {count}. "
-                    f"Первая дата: {min_date}. "
-                    f"Последняя дата: {max_date}."
-                )
-            else:
-                data_info = "Нет обработанных данных"
         except:
-            fig_out_long = {
-                "data": [],
-                "layout": {
-                    "title": {"text": "Нет заполненных данных", "font": {"color": "white"}},
-                    "paper_bgcolor": "#1A2138",
-                    "plot_bgcolor": "#202946",
-                    "font": {"color": "white"},
-                    "xaxis": {"color": "white", "gridcolor": "#444"},
-                    "yaxis": {"color": "white", "gridcolor": "#444"},
-                    "margin": {"l": 50, "r": 20, "t": 40, "b": 30}
-                }
-            }
-            data_info = ""
-    else:
-        fig_out_long = {
-            "data": [],
-            "layout": {
-                "title": {"text": "Нет заполненных данных", "font": {"color": "white"}},
-                "paper_bgcolor": "#1A2138",
-                "plot_bgcolor": "#202946",
-                "font": {"color": "white"},
-                "xaxis": {"color": "white", "gridcolor": "#444"},
-                "yaxis": {"color": "white", "gridcolor": "#444"},
-                "margin": {"l": 50, "r": 20, "t": 40, "b": 30}
-            }
-        }
-        data_info = ""
+            pass
 
-    # 7) Таблица out: читаем из Business/data_out_<filled_port>.csv
-    # ----------------------------------------------------
-    # Важно: в исходной версии был «mtime-кэш» вида:
-    #   if mtime(out) >= mtime(input): read_csv(...)
-    # Это приводит к «залипанию» данных, когда input обновляется чаще out (типично для стрима).
-    # По умолчанию читаем CSV на каждый тик; ниже оставлен вариант mtime-кэша (закомментирован).
+    # 7) Таблица out
     out_table_data = []
     if os.path.exists(out_path) and os.path.exists(input_path):
         try:
-            # ===== Вариант по умолчанию: всегда читаем свежие CSV =====
             df_out_cur = safe_read_csv(out_path)
             df_in_cur = safe_read_csv(input_path)
 
@@ -626,7 +472,6 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
                 dff_out = df_out_cur.copy()
                 dff_in = df_in_cur.copy()
 
-                # Фильтрация по датам (если DateTime есть)
                 if start_date and "DateTime" in dff_out.columns:
                     dff_out = dff_out[dff_out["DateTime"] >= start_date]
                 if end_date and "DateTime" in dff_out.columns:
@@ -637,7 +482,6 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
                 if end_date and "DateTime" in dff_in.columns:
                     dff_in = dff_in[dff_in["DateTime"] <= end_date]
 
-                # Выбираем колонку в out
                 if feature and feature in dff_out.columns:
                     out_col = feature
                 else:
@@ -647,7 +491,6 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
                 if out_col is None or "DateTime" not in dff_out.columns:
                     out_table_data = []
                 else:
-                    # Выбираем колонку во входе (предпочтительно ту же)
                     if feature and feature in dff_in.columns:
                         in_col = feature
                     elif out_col in dff_in.columns:
@@ -656,23 +499,19 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
                         cols_in = [c for c in dff_in.columns if c != "DateTime"]
                         in_col = cols_in[0] if cols_in else None
 
-                    # Сопоставляем по DateTime (устойчивее, чем iloc по индексам)
                     if ("DateTime" in dff_in.columns) and (in_col is not None):
                         merged = pd.merge(
                             dff_out[["DateTime", out_col]],
                             dff_in[["DateTime", in_col]],
                             on="DateTime",
                             how="left",
-                            suffixes=("_out", "_in"),
                         )
                         out_table_data = [
                             {"DateTime": r["DateTime"], "input": r.get(in_col), "value": r.get(out_col)}
                             for _, r in merged.iterrows()
                         ]
                     else:
-                        # Фоллбек: просто по минимуму длины (на случай неполных CSV)
                         n = min(len(dff_out), len(dff_in))
-                        out_table_data = []
                         for i in range(n):
                             out_table_data.append(
                                 {
@@ -686,7 +525,6 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
     else:
         out_table_data = []
 
-    # 8) Читаем всю историю метрик из Business/data_metrics_<filled_port>.csv
     metrics_file_columns = []
     metrics_file_data = []
     if os.path.exists(metrics_path):
@@ -697,25 +535,18 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
         except:
             metrics_file_columns = []
             metrics_file_data = []
-    else:
-        metrics_file_columns = []
-        metrics_file_data = []
 
-    # 9) Текущая метрика: последняя строка из Business/data_metrics_<filled_port>.csv
     metrics_info = ""
     if os.path.exists(metrics_path):
         try:
             dfm_full = pd.read_csv(metrics_path)
             if not dfm_full.empty:
                 last = dfm_full.iloc[-1]
-                parts = []
-                for col in dfm_full.columns:
-                    parts.append(f"{col} = {last[col]}")
+                parts = [f"{col} = {last[col]}" for col in dfm_full.columns]
                 metrics_info = ", ".join(parts)
         except:
             metrics_info = ""
 
-    # 10) Статус (оставляем пустым, если всё успешно)
     status = ""
 
     return (
@@ -730,10 +561,6 @@ def update_visualization(n_intervals, inst, feature, start_date, end_date):
         metrics_file_data
     )
 
-
-# ----------------------
-#  Запуск приложения
-# ----------------------
 
 if __name__ == "__main__":
     print("Запуск Dash-GUI (Polling-CSV)")

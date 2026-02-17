@@ -43,7 +43,7 @@ pipeline {
       steps {
         sh '''
           set +e
-          # Важно: добавили 8000 (HTTP API Business) — иначе прошлый job может держать порт и ломать новый запуск.
+          # Важно: добавили 8000 (HTTP API Business)
           for p in 8000 8050 8051 8092 8093 8094 8095; do
             fuser -k ${p}/tcp 2>/dev/null || true
           done
@@ -67,7 +67,7 @@ pipeline {
           cleanup() {
             set +e
             echo "==> Cleanup: stopping services"
-            # Штатно гасим PID-ы
+
             for f in run_output/*.pid; do
               [ -f "$f" ] || continue
               pid=$(cat "$f" 2>/dev/null || true)
@@ -76,10 +76,8 @@ pipeline {
               fi
             done
 
-            # Дадим процессам шанс завершиться
             sleep 2
 
-            # Жёсткое добивание, если ещё живы
             for f in run_output/*.pid; do
               [ -f "$f" ] || continue
               pid=$(cat "$f" 2>/dev/null || true)
@@ -88,10 +86,10 @@ pipeline {
               fi
             done
 
-            # На всякий случай — чистим порты
             for p in 8000 8050 8051 8092 8093 8094 8095; do
               fuser -k ${p}/tcp 2>/dev/null || true
             done
+
             echo "==> Cleanup done"
           }
 
@@ -120,7 +118,7 @@ pipeline {
           start_bg gui python GUI/dash_app_test.py
 
           echo "==> Services started"
-          echo "==> Tail logs (CTRL+C / abort build to stop)"
+          echo "==> Tail logs (abort build to stop)"
           tail -n +1 -F run_output/simulator.log run_output/reciever.log run_output/business.log run_output/gui.log
         '''
       }
