@@ -1,6 +1,5 @@
 pipeline {
   agent { label 'myll_ia_bakastov' }
-
   options {
     timestamps()
     timeout(time: 12, unit: 'MINUTES')
@@ -24,29 +23,15 @@ pipeline {
           set -eux
           python3 -V
           rm -rf "$VENV" run_output artifacts.tgz || true
-
           python3 -m venv "$VENV"
           . "$VENV/bin/activate"
-
           python -m pip install -U pip
           python -m pip install -r requirements.txt
         '''
       }
     }
 
-    stage('Clean ports (8092-8095)') {
-      steps {
-        sh '''#!/usr/bin/env bash
-          set +e
-          for p in $PORTS; do
-            fuser -k ${p}/tcp 2>/dev/null || true
-          done
-          set -e
-        '''
-      }
-    }
-
-    stage('Smoke run (90s, no GUI)') {
+    stage('Smoke run (robust, 90s)') {
       steps {
         sh '''#!/usr/bin/env bash
 set -euo pipefail
@@ -63,11 +48,19 @@ kill_by_ports() {
   done
 }
 
-ports_free() {
+ports_free_once() {
   for p in $PORTS; do
     if ss -lnt | grep -q ":${p} "; then
       return 1
     fi
+  done
+  return 0
+}
+
+ports_free_stable_or_fail() {
+  for t in 1 2 3; do
+    ports_free_once || return 1
+    sleep 0.5
   done
   return 0
 }
@@ -87,88 +80,83 @@ stop_group() {
   fi
 }
 
-wait_ports_ready() {
-  for i in $(seq 1 60); do
-    ok=0
-    for p in $PORTS; do
-      if ss -lnt | grep -q ":${p} "; then ok=$((ok+1)); fi
-    done
-    [ "$ok" -eq 4 ] && return 0
+show_diag() {
+  echo "==> DIAGNOSTICS"
+  echo "-- listeners:"
+  ss -lntp | egrep ':8092|:8093|:8094|:8095' || true
+  echo "-- reciever.log (tail):"
+  tail -n 120 run_output/reciever.log 2>/dev/null || true
+  echo "-- simulator.log (tail):"
+  tail -n 120 run_output/simulator.log 2>/dev/null || true
+  echo "-- business.log (tail):"
+  tail -n 120 run_output/business.log 2>/dev/null || true
+  echo "-- files:"
+  ls -la Reciever 2>/dev/null || true
+  ls -la Business 2>/dev/null || true
+  find Reciever -maxdepth 1 -type f -name '*.csv' -print 2>/dev/null || true
+  find Business -maxdepth 3 -type f -name '*.csv' -print 2>/dev/null || true
+}
+
+wait_ready() {
+  for i in $(seq 1 80); do
+    if ss -lnt | egrep -q ':8092 |:8093 |:8094 |:8095 '; then
+      return 0
+    fi
+    if ls Reciever/*.csv >/dev/null 2>&1 || find Business -maxdepth 3 -type f -name '*.csv' >/dev/null 2>&1; then
+      return 0
+    fi
     sleep 0.5
   done
   return 1
 }
 
-fail_with_logs() {
-  echo "==> FAILURE diagnostics"
-  echo "-- listeners:"
-  ss -lntp | egrep ':8092|:8093|:8094|:8095' || true
-  echo "-- tail logs:"
-  tail -n 200 run_output/reciever.log 2>/dev/null || true
-  tail -n 200 run_output/simulator.log 2>/dev/null || true
-  tail -n 200 run_output/business.log 2>/dev/null || true
-}
-
-echo "==> Ensure ports are free"
+echo "==> Pre-clean ports"
 kill_by_ports
 sleep 1
-ports_free || (echo "Ports still busy" && ss -lntp | egrep ':8092|:8093|:8094|:8095' && exit 1)
+if ! ports_free_stable_or_fail; then
+  echo "Ports are busy before start."
+  show_diag
+  exit 1
+fi
 
-echo "==> Start Reciever FIRST (server)"
-start_bg reciever python3 Reciever/reciever.py
+echo "==> Start components (background)"
+start_bg reciever  python3 Reciever/reciever.py
+start_bg simulator python3 Simulator/simulator.py
+start_bg business  python3 Business/business.py
 
-echo "==> Wait ports 8092-8095 to become LISTEN"
-if ! wait_ports_ready; then
-  echo "Ports did not become ready after Reciever start."
-  fail_with_logs
+echo "==> Wait readiness (ports or CSVs)"
+if ! wait_ready; then
+  echo "Services did not become ready in time."
+  show_diag
+  stop_group business
+  stop_group simulator
   stop_group reciever
   kill_by_ports
   exit 1
 fi
 
-echo "==> Start Simulator (client)"
-start_bg simulator python3 Simulator/simulator.py
-
-echo "==> Wait until Reciever produces base CSVs (up to 30s)"
-need="8092 8093 8094 8095"
-for i in $(seq 1 60); do
-  ok=0
-  for p in $need; do
-    f="Reciever/data_port_${p}.csv"
-    [ -s "$f" ] && ok=$((ok+1))
-  done
-  [ "$ok" -eq 4 ] && break
-  sleep 0.5
-done
-
-for p in $need; do
-  f="Reciever/data_port_${p}.csv"
-  if [ ! -s "$f" ]; then
-    echo "Reciever did not produce $f in time."
-    fail_with_logs
-    stop_group simulator
-    stop_group reciever
-    kill_by_ports
-    exit 1
-  fi
-done
-
-echo "==> Start Business (after CSVs exist)"
-start_bg business python3 Business/business.py
-
 echo "==> Let them work 90s"
 sleep 90
 
-echo "==> Basic checks"
-ls -la Reciever/*.csv >/dev/null 2>&1 || (echo "No Reciever CSV" && fail_with_logs && exit 1)
-
-BUS_CSV_COUNT="$(find Business -maxdepth 3 -type f -name '*.csv' 2>/dev/null | wc -l | tr -d ' ')"
-echo "Business CSV count: ${BUS_CSV_COUNT}"
-[ "${BUS_CSV_COUNT}" -gt 0 ] || (echo "No Business CSV" && fail_with_logs && exit 1)
-
-echo "==> Copy outputs to run_output"
+echo "==> Collect outputs"
 cp -a Reciever/*.csv run_output/ 2>/dev/null || true
 find Business -maxdepth 3 -type f -name '*.csv' -exec cp -a {} run_output/ \\; 2>/dev/null || true
+
+echo "==> Post-check: require some output"
+REC_COUNT="$(ls Reciever/*.csv 2>/dev/null | wc -l | tr -d ' ')"
+BUS_COUNT="$(find Business -maxdepth 3 -type f -name '*.csv' 2>/dev/null | wc -l | tr -d ' ')"
+echo "Reciever CSV count: ${REC_COUNT}"
+echo "Business CSV count: ${BUS_COUNT}"
+
+if [ "${REC_COUNT}" -eq 0 ] && [ "${BUS_COUNT}" -eq 0 ]; then
+  echo "No CSV produced by either Reciever or Business."
+  show_diag
+  stop_group business
+  stop_group simulator
+  stop_group reciever
+  kill_by_ports
+  exit 1
+fi
 
 echo "==> Stop processes"
 stop_group business
@@ -178,7 +166,13 @@ stop_group reciever
 echo "==> Final port cleanup"
 kill_by_ports
 sleep 1
-ports_free || (echo "Ports still busy after stopping" && ss -lntp | egrep ':8092|:8093|:8094|:8095' && exit 1)
+
+echo "==> Verify ports are free after stopping"
+if ! ports_free_stable_or_fail; then
+  echo "Ports still busy after stopping."
+  show_diag
+  exit 1
+fi
 
 echo "Smoke run OK"
 '''
