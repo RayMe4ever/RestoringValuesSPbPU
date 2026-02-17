@@ -2,7 +2,7 @@ import os
 import pandas as pd
 
 
-class DataSource:
+class data_source:
 
     def __init__(self, dir_reciever, path_main=None, path_test=None):
         self.dir_reciever = dir_reciever
