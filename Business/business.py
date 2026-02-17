@@ -43,7 +43,7 @@ async def prediction_loop():
             for task in tasks:
                 batch, batch_true = task[1].load_batches()
 
-                # Данных ещё нет → ждём
+                # если данных ещё нет — просто ждём
                 if batch is None:
                     continue
 

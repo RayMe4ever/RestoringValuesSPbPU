@@ -35,35 +35,34 @@ class Facility:
     # RETRY CONNECT (MAIN)
     # =========================
     async def run_websocket_main(self):
-        host = os.getenv("WEBSOCKET_HOST", "127.0.0.1")
+        """Подключиться к главному порту"""
+        host = os.getenv("WEBSOCKET_HOST", socket.gethostbyname(socket.gethostname()))
         url_main = f"ws://{host}:{self.port_main}"
-
         while True:
             try:
-                print(f"[{self.name}] Подключаюсь к {url_main}")
+                print(f"Подключаюсь к {url_main}")
                 self.client_main = await websockets.connect(url_main)
-                print(f"[{self.name}] Подключение установлено (main)")
+                print("Подключение установлено (main)")
                 return
             except Exception as e:
-                print(f"[{self.name}] Ошибка подключения (main): {e}")
-                print("Retry через 2 сек...")
+                print(f"Ошибка подключения (main): {e}. Retry in 2s...")
                 await asyncio.sleep(2)
 
     # =========================
     # RETRY CONNECT (TEST)
     # =========================
     async def run_websocket_test(self):
-        host = os.getenv("WEBSOCKET_HOST", "127.0.0.1")
+        """Подключиться к тестовому порту"""
+        host = os.getenv("WEBSOCKET_HOST", socket.gethostbyname(socket.gethostname()))
         url_test = f"ws://{host}:{self.port_test}"
-
         while True:
             try:
-                print(f"[{self.name}] Подключаюсь к {url_test}")
+                print(f"Подключаюсь к {url_test}")
                 self.client_test = await websockets.connect(url_test)
-                print(f"[{self.name}] Подключение установлено (test)")
+                print("Подключение установлено (test)")
                 return
             except Exception as e:
-                print(f"[{self.name}] Ошибка подключения (test): {e}. Retry in 2s...")
+                print(f"Ошибка подключения (test): {e}. Retry in 2s...")
                 await asyncio.sleep(2)
 
     # =========================

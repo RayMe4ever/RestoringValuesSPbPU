@@ -13,30 +13,19 @@ class DataSource:
     # SAFE CSV READ
     # =========================
     def _safe_read_csv(self, path):
-        if path is None:
-            return None
-
         full = os.path.join(self.dir_reciever, path)
-
         try:
-            # Файла ещё нет
-            if not os.path.exists(full):
+            if not os.path.exists(full) or os.path.getsize(full) == 0:
                 return None
-
-            # Файл есть, но пустой
-            if os.path.getsize(full) == 0:
-                return None
-
             return pd.read_csv(full)
-
         except Exception as e:
-            print(f"[DataSource] read_csv error {full}: {e}")
+            print(f"[data_source] read_csv failed {full}: {e}")
             return None
 
     # =========================
     # LOAD BATCHES
     # =========================
     def load_batches(self):
-        batch_main = self._safe_read_csv(self.path_main)
-        batch_test = self._safe_read_csv(self.path_test)
+        batch_main = self._safe_read_csv(self.path_main) if self.path_main is not None else None
+        batch_test = self._safe_read_csv(self.path_test) if self.path_test is not None else None
         return batch_main, batch_test
